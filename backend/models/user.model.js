@@ -22,10 +22,10 @@ const userSchema= new mongoose.Schema({
 
 
 userSchema.statics.hashPassword = async function (password) {
-    return await bcrypt.hashPassword(password, 10);
+    return await bcrypt.hash(password, 10);
 }
 
-userSchema.methods.validatePassword = async function (password) {
+userSchema.methods.isValidPassword = async function (password) {
     return await bcrypt.compare(password, this.password);
 }
 
