@@ -16,17 +16,21 @@ const userSchema= new mongoose.Schema({
     },
     password:{
         type:String,
+        required:true,
         select: false,
     },
 })
 
 
-userSchema.statics.hashPassword = async function (password) {
-    return await bcrypt.hash(password, 10);
-}
+userSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+    this.password = await bcrypt.hash(this.password, 10);
+    next();
+});
+
 
 userSchema.methods.isValidPassword = async function (password) {
-    return await bcrypt.compare(password, this.password);
+  return await bcrypt.compare(password, this.password);
 }
 
 userSchema.methods.generateJWT = function () {
