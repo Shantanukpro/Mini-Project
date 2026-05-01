@@ -1,0 +1,2 @@
+# This repository currently uses a Node.js/Express backend and React frontend.
+# No Python runtime dependencies are required by the checked-in application.

@@ -1,84 +1,107 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "../config/axios";
 
 const Login = () => {
-
-  cont[ email, setEmail] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
 
   function submitHandler(e) {
-    
     e.preventDefault();
+    setError("");
+    setIsSubmitting(true);
 
-    axios.post('/users/login',{
-      email,
-      password
-    }).then((res) => {
-      console.log(res.data)
-      navigate('/');
-    }).catch((err) => {
-      console.log(err.response.data)
-    })
+    axios
+      .post("/users/login", {
+        email,
+        password,
+      })
+      .then((res) => {
+        localStorage.setItem("authToken", res.data.token);
+        localStorage.setItem("authUser", JSON.stringify(res.data.user));
+        navigate("/");
+      })
+      .catch((err) => {
+        setError(err.response?.data?.error || "Unable to log in. Please try again.");
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+      });
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white">
-      <div className="w-full max-w-md p-8 bg-gray-900 border border-gray-800 rounded-lg shadow-lg">
-        <h1 className="text-3xl font-bold text-center mb-6 text-white hover:text-gray-300 transition-colors">
+    <div className="min-h-screen bg-slate-950 px-4 py-10 text-white">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-md items-center">
+        <form onSubmit={submitHandler} className="w-full rounded-lg border border-slate-800 bg-slate-900 p-8 shadow-xl">
+          <h1 className="mb-2 text-center text-3xl font-bold text-white">
           Welcome
-        </h1>
-        <form onSubmit={submitHandler}   className="space-y-6">
-          <div>
+          </h1>
+          <p className="mb-6 text-center text-sm text-slate-400">Sign in to continue your chatbot session.</p>
+
+          {error && (
+            <p className="mb-4 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {error}
+            </p>
+          )}
+
+          <div className="space-y-6">
+            <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors"
+              className="block text-sm font-medium text-slate-300"
             >
               Email
             </label>
             <input 
               onChange={(e) => setEmail(e.target.value)}
+              value={email}
               type="email"
               id="email"
-              className="w-full mt-1 px-4 py-2 text-sm text-gray-900 bg-gray-800 border border-gray-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-white shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your email"
               required
             />
-          </div>
-          <div>
+            </div>
+            <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors"
+              className="block text-sm font-medium text-slate-300"
             >
               Password
             </label>
             <input
               onChange={(e) => setPassword(e.target.value)}
+              value={password}
               type="password"
               id="password"
-              className="w-full mt-1 px-4 py-2 text-sm text-gray-900 bg-gray-800 border border-gray-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+              minLength={6}
+              className="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-white shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your password"
               required
             />
-          </div>
+            </div>
           <button
             type="submit"
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              disabled={isSubmitting}
+              className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700"
           >
-            Login
+              {isSubmitting ? "Signing in..." : "Login"}
           </button>
-        </form>
-        <p className="text-sm text-center text-gray-400 mt-4">
+          </div>
+        <p className="mt-4 text-center text-sm text-slate-400">
           Don't have an account?{" "}
           <Link
             to="/register"
-            className="text-blue-500 hover:text-blue-400 hover:underline focus:outline-none transition-colors"
+              className="text-blue-400 transition hover:text-blue-300 hover:underline"
           >
             Register
           </Link>
         </p>
+        </form>
       </div>
     </div>
   );
