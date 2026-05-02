@@ -38,11 +38,31 @@ function normalizeContent(content) {
 }
 
 export function isAiMessage(content) {
-  return /^@ai\b/i.test(String(content || '').trim());
+  const text = String(content || '').trim();
+  return /^@ai\b/i.test(text) || text.startsWith('/summarize') || text.startsWith('/fix');
 }
 
-export function extractAiPrompt(content) {
-  return String(content || '').trim().replace(/^@ai\b[:\s-]*/i, '').trim();
+export function parseAiCommand(content) {
+  const text = String(content || '').trim();
+  
+  if (text.startsWith('/summarize')) {
+    return { command: 'summarize', payload: text.replace(/^\/summarize\b[:\s-]*/i, '').trim() };
+  }
+  
+  if (text.startsWith('/fix')) {
+    return { command: 'fix', payload: text.replace(/^\/fix\b[:\s-]*/i, '').trim() };
+  }
+  
+  if (/^@ai\b/i.test(text)) {
+    const payload = text.replace(/^@ai\b[:\s-]*/i, '').trim();
+    // Support `@ai explain <code>` mapping to explain, or general prompt otherwise
+    if (payload.toLowerCase().startsWith('explain ')) {
+      return { command: 'explain', payload: payload.replace(/^explain\b[:\s-]*/i, '').trim() };
+    }
+    return { command: 'general', payload };
+  }
+  
+  return { command: 'general', payload: text };
 }
 
 export async function listDevelopersForUser(userId) {
@@ -53,7 +73,7 @@ export async function listDevelopersForUser(userId) {
 }
 
 export async function listChatsForUser(userId) {
-  return Chat.find({ participants: userId, deletedFor: { $ne: userId } })
+  return Chat.find({ participants: userId })
     .populate('participants', 'name email')
     .populate('lastMessage.sender', 'name email')
     .sort({ updatedAt: -1 });
@@ -85,11 +105,6 @@ export async function createChat({ creatorId, participantId }) {
     .populate('lastMessage.sender', 'name email');
 
   if (existingChat) {
-    // Restore chat if the creator had previously deleted it
-    if (existingChat.deletedFor?.some((id) => normalizeId(id) === normalizeId(creatorId))) {
-      existingChat.deletedFor.pull(creatorId);
-      await existingChat.save();
-    }
     return { chat: existingChat, isNew: false };
   }
 
@@ -109,7 +124,6 @@ export async function getChatForUser(chatId, userId) {
   const chat = await Chat.findOne({
     _id: chatId,
     participants: userId,
-    deletedFor: { $ne: userId },
   })
     .populate('participants', 'name email')
     .populate('lastMessage.sender', 'name email');
@@ -123,7 +137,7 @@ export async function getChatForUser(chatId, userId) {
   return chat;
 }
 
-// Soft-delete a chat for one user; hard-delete when both participants removed it
+// Hard-delete a chat and its messages for all participants
 export async function deleteChatForUser(chatId, userId) {
   assertValidObjectId(chatId, 'Chat');
 
@@ -135,24 +149,9 @@ export async function deleteChatForUser(chatId, userId) {
     throw error;
   }
 
-  // Prevent duplicate entries
-  if (!chat.deletedFor.some((id) => normalizeId(id) === normalizeId(userId))) {
-    chat.deletedFor.push(userId);
-    await chat.save();
-  }
-
-  // If all participants deleted → hard-delete chat + messages
-  const allDeleted = chat.participants.every(
-    (pid) => chat.deletedFor.some((did) => normalizeId(did) === normalizeId(pid)),
-  );
-
-  if (allDeleted) {
-    await Message.deleteMany({ chat: chatId });
-    await Chat.findByIdAndDelete(chatId);
-    return { hardDeleted: true, participants: chat.participants };
-  }
-
-  return { hardDeleted: false, participants: chat.participants };
+  await Message.deleteMany({ chat: chatId });
+  await Chat.findByIdAndDelete(chatId);
+  return { hardDeleted: true, participants: chat.participants };
 }
 
 export async function listMessagesForChat({ chatId, userId }) {
@@ -161,6 +160,15 @@ export async function listMessagesForChat({ chatId, userId }) {
   return Message.find({ chat: chatId })
     .populate('sender', 'name email')
     .sort({ createdAt: 1 });
+}
+
+export async function getRecentChatMessages(chatId, limit = 20) {
+  assertValidObjectId(chatId, 'Chat');
+  return Message.find({ chat: chatId })
+    .populate('sender', 'name email')
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .then(messages => messages.reverse());
 }
 
 async function updateLastMessage(message) {

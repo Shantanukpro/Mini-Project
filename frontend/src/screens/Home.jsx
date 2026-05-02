@@ -494,6 +494,12 @@ const Home = () => {
                 );
               })}
 
+              {activeChat && typingStatus[activeChatId] === 'ai-assistant' && (
+                <div className="flex animate-pulse items-center gap-2 text-sm italic text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  AI assistant is typing...
+                </div>
+              )}
               {activeChat && typingStatus[activeChatId] === getOtherDeveloper(activeChat)?._id && (
                 <div className="flex animate-pulse items-center gap-2 text-sm italic text-slate-400">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
@@ -517,7 +523,7 @@ const Home = () => {
                       socketRef.current.emit("typing:stop", { chatId: activeChatId });
                     }, 2000);
                   }}
-                  placeholder={activeChat ? "Message a developer, or type @ai explain this code" : "Open a chat to send a message"}
+                  placeholder={activeChat ? "Message, or use @ai explain, /summarize, /fix" : "Open a chat to send a message"}
                   value={message}
                 />
                 <button

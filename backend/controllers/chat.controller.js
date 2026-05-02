@@ -4,7 +4,8 @@ import {
   createChat,
   createUserMessage,
   deleteChatForUser,
-  extractAiPrompt,
+  parseAiCommand,
+  getRecentChatMessages,
   isAiMessage,
   listChatsForUser,
   listMessagesForChat,
@@ -91,8 +92,18 @@ export const sendChatMessageController = async (req, res) => {
       emitMessageCreated(io, chat, savedMessage);
 
       if (isAiMessage(savedMessage.content)) {
-        const prompt = extractAiPrompt(savedMessage.content);
-        const result = await generateChatReply(prompt || savedMessage.content);
+        const commandData = parseAiCommand(savedMessage.content);
+        
+        let context = null;
+        if (commandData.command === 'summarize') {
+          try {
+            context = await getRecentChatMessages(req.params.chatId, 20);
+          } catch (err) {
+            console.error('[chat.controller] failed to fetch recent messages:', err.message);
+          }
+        }
+
+        const result = await generateChatReply(commandData, context);
         const aiMessage = await createAiMessage({
           chatId: req.params.chatId,
           content: result.reply,

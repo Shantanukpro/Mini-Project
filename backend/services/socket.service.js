@@ -4,7 +4,8 @@ import userModel from '../models/user.model.js';
 import {
   createAiMessage,
   createUserMessage,
-  extractAiPrompt,
+  parseAiCommand,
+  getRecentChatMessages,
   getChatForUser,
   isAiMessage,
 } from './chat.service.js';
@@ -78,12 +79,23 @@ export function emitMessageCreated(io, chat, message) {
 async function broadcastAiReply(io, chat, chatId, userContent) {
   if (!isAiMessage(userContent)) return;
 
-  const prompt = extractAiPrompt(userContent);
-  const aiInput = prompt || userContent;
+  // Broadcast typing indicator
+  io.to(chatRoom(chatId)).emit('typing:start', { chatId, userId: 'ai-assistant' });
+
+  const commandData = parseAiCommand(userContent);
+  
+  let context = null;
+  if (commandData.command === 'summarize') {
+    try {
+      context = await getRecentChatMessages(chatId, 20);
+    } catch (err) {
+      console.error('[broadcastAiReply] failed to fetch recent messages:', err.message);
+    }
+  }
 
   let result;
   try {
-    result = await generateChatReply(aiInput);
+    result = await generateChatReply(commandData, context);
   } catch (err) {
     console.error('[broadcastAiReply] AI call failed, sending fallback:', err.message);
     result = {
@@ -91,6 +103,9 @@ async function broadcastAiReply(io, chat, chatId, userContent) {
       provider: 'local-fallback',
     };
   }
+
+  // Stop typing indicator
+  io.to(chatRoom(chatId)).emit('typing:stop', { chatId, userId: 'ai-assistant' });
 
   try {
     const aiMessage = await createAiMessage({

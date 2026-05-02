@@ -35,6 +35,7 @@ router.post(
   body('message')
     .isString()
     .trim()
+    .escape()
     .isLength({ min: 1, max: 4000 })
     .withMessage('Message must be between 1 and 4000 characters'),
   body('clientMessageId')

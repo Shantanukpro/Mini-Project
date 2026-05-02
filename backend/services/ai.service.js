@@ -21,15 +21,40 @@ function buildLocalReply(message) {
   ].join(' ');
 }
 
-export async function generateChatReply(message) {
+export async function generateChatReply(commandData, context = null) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
   if (isPlaceholderKey(apiKey)) {
     return {
-      reply: buildLocalReply(message),
+      reply: buildLocalReply(commandData.payload || 'No payload'),
       provider: 'local-fallback',
     };
+  }
+
+  let systemPrompt = 'You are a concise interview-demo chatbot for a student mini project.';
+  let promptText = commandData.payload;
+
+  if (commandData.command === 'summarize') {
+    systemPrompt = 'You are a helpful AI assistant. Please summarize the following chat history concisely.';
+    
+    let historyText = '';
+    if (context && context.length > 0) {
+      historyText = context.map(m => {
+        const sender = m.role === 'ai' ? 'AI' : (m.sender?.name || m.sender?.email || 'User');
+        return `${sender}: ${m.content}`;
+      }).join('\n');
+    } else {
+      historyText = 'No recent history available.';
+    }
+    
+    promptText = `Please summarize the following chat:\n\n${historyText}`;
+  } else if (commandData.command === 'fix') {
+    systemPrompt = 'You are an expert software engineer. Review the provided code snippet, find any issues, and provide a fixed version with a brief explanation.';
+    promptText = `Please fix the following code:\n\n${commandData.payload}`;
+  } else if (commandData.command === 'explain') {
+    systemPrompt = 'You are an expert software engineer. Please explain the provided concept or code clearly and concisely.';
+    promptText = `Please explain:\n\n${commandData.payload}`;
   }
 
   const response = await fetch(`${GEMINI_API_BASE_URL}/${model}:generateContent`, {
@@ -42,7 +67,7 @@ export async function generateChatReply(message) {
       systemInstruction: {
         parts: [
           {
-            text: 'You are a concise interview-demo chatbot for a student mini project.',
+            text: systemPrompt,
           },
         ],
       },
@@ -51,7 +76,7 @@ export async function generateChatReply(message) {
           role: 'user',
           parts: [
             {
-              text: message,
+              text: promptText,
             },
           ],
         },
@@ -75,7 +100,7 @@ export async function generateChatReply(message) {
     .trim();
 
   return {
-    reply: reply || buildLocalReply(message),
+    reply: reply || buildLocalReply(commandData.payload || 'No payload'),
     provider: 'gemini',
   };
 }
