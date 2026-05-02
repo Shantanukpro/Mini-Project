@@ -1,5 +1,19 @@
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+// ── Debug: confirm env loading at startup ──
+const _loadedKey = process.env.GEMINI_API_KEY;
+console.log(
+  `[ai.service] GEMINI_API_KEY ${
+    _loadedKey && _loadedKey !== 'YOUR_API_KEY'
+      ? `loaded (${_loadedKey.slice(0, 4)}…${_loadedKey.slice(-4)})`
+      : 'NOT configured – using local fallback'
+  }`
+);
+
+function isPlaceholderKey(key) {
+  return !key || !key.trim() || key === 'YOUR_API_KEY';
+}
+
 function buildLocalReply(message) {
   return [
     'I can help with that. Configure GEMINI_API_KEY to enable live AI responses.',
@@ -11,7 +25,7 @@ export async function generateChatReply(message) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
-  if (!apiKey || apiKey === 'YOUR_API_KEY') {
+  if (isPlaceholderKey(apiKey)) {
     return {
       reply: buildLocalReply(message),
       provider: 'local-fallback',
