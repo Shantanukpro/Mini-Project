@@ -48,14 +48,14 @@ export function extractAiPrompt(content) {
 export async function listDevelopersForUser(userId) {
   return userModel
     .find({ _id: { $ne: userId } })
-    .select('email createdAt')
+    .select('name email createdAt')
     .sort({ email: 1 });
 }
 
 export async function listChatsForUser(userId) {
   return Chat.find({ participants: userId })
-    .populate('participants', 'email')
-    .populate('lastMessage.sender', 'email')
+    .populate('participants', 'name email')
+    .populate('lastMessage.sender', 'name email')
     .sort({ updatedAt: -1 });
 }
 
@@ -81,8 +81,8 @@ export async function createChat({ creatorId, participantId }) {
       $size: 2,
     },
   })
-    .populate('participants', 'email')
-    .populate('lastMessage.sender', 'email');
+    .populate('participants', 'name email')
+    .populate('lastMessage.sender', 'name email');
 
   if (existingChat) {
     return { chat: existingChat, isNew: false };
@@ -93,7 +93,7 @@ export async function createChat({ creatorId, participantId }) {
     createdBy: creatorId,
   });
 
-  await chat.populate('participants', 'email');
+  await chat.populate('participants', 'name email');
 
   return { chat, isNew: true };
 }
@@ -105,8 +105,8 @@ export async function getChatForUser(chatId, userId) {
     _id: chatId,
     participants: userId,
   })
-    .populate('participants', 'email')
-    .populate('lastMessage.sender', 'email');
+    .populate('participants', 'name email')
+    .populate('lastMessage.sender', 'name email');
 
   if (!chat) {
     const error = new Error('Chat was not found for this user');
@@ -121,7 +121,7 @@ export async function listMessagesForChat({ chatId, userId }) {
   await getChatForUser(chatId, userId);
 
   return Message.find({ chat: chatId })
-    .populate('sender', 'email')
+    .populate('sender', 'name email')
     .sort({ createdAt: 1 });
 }
 
@@ -149,7 +149,7 @@ export async function createUserMessage({
 
   if (clientMessageId) {
     const existingMessage = await Message.findOne({ chat: chatId, clientMessageId })
-      .populate('sender', 'email');
+      .populate('sender', 'name email');
 
     if (existingMessage) {
       return { message: existingMessage, duplicate: true, chat };
@@ -165,7 +165,7 @@ export async function createUserMessage({
   });
 
   await updateLastMessage(message);
-  await message.populate('sender', 'email');
+  await message.populate('sender', 'name email');
 
   return { message, duplicate: false, chat };
 }

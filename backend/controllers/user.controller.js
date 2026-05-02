@@ -26,11 +26,19 @@ export const createUserController = async (req, res) => {
   const errors = validationResult(req);
 
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    console.error('Registration validation failed:', errors.array());
+    return res.status(400).json({
+      error: 'Validation failed',
+      errors: errors.array(),
+    });
   }
 
   try {
-    const user = await userService.createUser(req.body);
+    const { name, email, password } = req.body;
+
+    console.log('Registration request received:', { name, email });
+
+    const user = await userService.createUser({ name, email, password });
     const token = user.generateJWT();
 
     setAuthCookie(res, token);
@@ -38,7 +46,15 @@ export const createUserController = async (req, res) => {
     res.status(201).json({ user, token });
   } catch (error) {
     const status = error.code === 11000 ? 409 : 400;
-    res.status(status).json({ error: error.code === 11000 ? 'Email is already registered' : error.message });
+    const message = error.code === 11000 ? 'Email is already registered' : error.message;
+
+    console.error('Registration failed:', {
+      message: error.message,
+      code: error.code,
+      errors: error.errors,
+    });
+
+    res.status(status).json({ error: message });
   }
 };
 

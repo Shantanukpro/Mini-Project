@@ -23,6 +23,10 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
+function displayDeveloper(user) {
+  return user?.name || user?.email || "Developer";
+}
+
 const Home = () => {
   const token = useMemo(() => localStorage.getItem("authToken"), []);
   const navigate = useNavigate();
@@ -279,7 +283,7 @@ const Home = () => {
               {socketStatus === "live" ? "Live sync" : "Offline fallback"}
             </span>
             <span className="rounded-md border border-slate-700 px-3 py-2 text-slate-300">
-              {currentUser?.email}
+              {displayDeveloper(currentUser)}
             </span>
             <button onClick={logout} className="rounded-md border border-slate-700 px-3 py-2 text-slate-200 transition hover:border-red-400 hover:text-white" type="button">
               Logout
@@ -309,7 +313,7 @@ const Home = () => {
                   <option value="">Select developer</option>
                   {developers.map((developer) => (
                     <option key={developer._id} value={developer._id}>
-                      {developer.email}
+                      {displayDeveloper(developer)}
                     </option>
                   ))}
                 </select>
@@ -341,7 +345,7 @@ const Home = () => {
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="truncate text-sm font-semibold text-white">
-                            {otherDeveloper?.email || "Developer chat"}
+                            {displayDeveloper(otherDeveloper)}
                           </span>
                           <span className="shrink-0 text-xs text-slate-500">
                             {formatTime(chat.lastMessage?.createdAt || chat.updatedAt)}
@@ -361,7 +365,7 @@ const Home = () => {
           <section className="flex min-h-[36rem] flex-col rounded-lg border border-slate-800 bg-slate-900">
             <div className="border-b border-slate-800 px-4 py-3">
               <h2 className="text-lg font-semibold text-white">
-                {activeChat ? getOtherDeveloper(activeChat)?.email || "Developer chat" : "Select a chat"}
+                {activeChat ? displayDeveloper(getOtherDeveloper(activeChat)) : "Select a chat"}
               </h2>
               <p className="mt-1 text-sm text-slate-400">
                 {activeChat ? "Messages persist and sync live for both developers." : "Choose a thread from the sidebar to load history."}
@@ -393,7 +397,7 @@ const Home = () => {
                   >
                     <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-300">
                       <span className="truncate font-medium">
-                        {isAi ? "AI assistant" : isMine ? "You" : item.sender?.email || "Developer"}
+                        {isAi ? "AI assistant" : isMine ? "You" : displayDeveloper(item.sender)}
                       </span>
                       <span className="shrink-0">{formatTime(item.createdAt)}</span>
                     </div>

@@ -82,3 +82,4 @@ AI Service
 - Socket.IO rooms map naturally to chat ids, which keeps broadcasts scoped to the right participants.
 - The AI assistant is treated as another message producer, so AI responses remain persistent, auditable, and visible to all chat members.
 - The backend keeps chat logic, AI logic, and socket logic in separate modules to make the code easier to explain and extend.
+  

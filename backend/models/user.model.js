@@ -3,6 +3,13 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    minLength: [2, 'Name must be at least 2 characters'],
+    maxLength: [60, 'Name must not be longer than 60 characters'],
+  },
   email: {
     type: String,
     required: true,
@@ -28,11 +35,10 @@ const userSchema = new mongoose.Schema({
   },
 });
 
-userSchema.pre('save', async function hashPassword(next) {
-  if (!this.isModified('password')) return next();
+userSchema.pre('save', async function hashPassword() {
+  if (!this.isModified('password')) return;
 
   this.password = await bcrypt.hash(this.password, 10);
-  return next();
 });
 
 userSchema.methods.isValidPassword = function isValidPassword(password) {
@@ -41,7 +47,7 @@ userSchema.methods.isValidPassword = function isValidPassword(password) {
 
 userSchema.methods.generateJWT = function generateJWT() {
   return jwt.sign(
-    { id: this._id.toString(), email: this.email },
+    { id: this._id.toString(), email: this.email, name: this.name },
     process.env.JWT_SECRET || 'dev-only-change-me',
     { expiresIn: process.env.JWT_EXPIRES_IN || '24h' },
   );
