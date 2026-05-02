@@ -53,7 +53,7 @@ export async function listDevelopersForUser(userId) {
 }
 
 export async function listChatsForUser(userId) {
-  return Chat.find({ participants: userId })
+  return Chat.find({ participants: userId, deletedFor: { $ne: userId } })
     .populate('participants', 'name email')
     .populate('lastMessage.sender', 'name email')
     .sort({ updatedAt: -1 });
@@ -85,6 +85,11 @@ export async function createChat({ creatorId, participantId }) {
     .populate('lastMessage.sender', 'name email');
 
   if (existingChat) {
+    // Restore chat if the creator had previously deleted it
+    if (existingChat.deletedFor?.some((id) => normalizeId(id) === normalizeId(creatorId))) {
+      existingChat.deletedFor.pull(creatorId);
+      await existingChat.save();
+    }
     return { chat: existingChat, isNew: false };
   }
 
@@ -104,6 +109,7 @@ export async function getChatForUser(chatId, userId) {
   const chat = await Chat.findOne({
     _id: chatId,
     participants: userId,
+    deletedFor: { $ne: userId },
   })
     .populate('participants', 'name email')
     .populate('lastMessage.sender', 'name email');
@@ -115,6 +121,38 @@ export async function getChatForUser(chatId, userId) {
   }
 
   return chat;
+}
+
+// Soft-delete a chat for one user; hard-delete when both participants removed it
+export async function deleteChatForUser(chatId, userId) {
+  assertValidObjectId(chatId, 'Chat');
+
+  const chat = await Chat.findOne({ _id: chatId, participants: userId });
+
+  if (!chat) {
+    const error = new Error('Chat was not found for this user');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Prevent duplicate entries
+  if (!chat.deletedFor.some((id) => normalizeId(id) === normalizeId(userId))) {
+    chat.deletedFor.push(userId);
+    await chat.save();
+  }
+
+  // If all participants deleted → hard-delete chat + messages
+  const allDeleted = chat.participants.every(
+    (pid) => chat.deletedFor.some((did) => normalizeId(did) === normalizeId(pid)),
+  );
+
+  if (allDeleted) {
+    await Message.deleteMany({ chat: chatId });
+    await Chat.findByIdAndDelete(chatId);
+    return { hardDeleted: true, participants: chat.participants };
+  }
+
+  return { hardDeleted: false, participants: chat.participants };
 }
 
 export async function listMessagesForChat({ chatId, userId }) {

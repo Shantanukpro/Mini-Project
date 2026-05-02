@@ -3,6 +3,7 @@ import { body, param } from 'express-validator';
 import * as authMiddleware from '../middleware/auth.middleware.js';
 import {
   createChatController,
+  deleteChatController,
   listChatsController,
   listMessagesController,
   sendChatMessageController,
@@ -43,6 +44,12 @@ router.post(
     .isLength({ max: 120 })
     .withMessage('Client message id is too long'),
   sendChatMessageController,
+);
+
+router.delete(
+  '/:chatId',
+  param('chatId').isMongoId().withMessage('Chat must be a valid id'),
+  deleteChatController,
 );
 
 export default router;

@@ -3,13 +3,14 @@ import {
   createAiMessage,
   createChat,
   createUserMessage,
+  deleteChatForUser,
   extractAiPrompt,
   isAiMessage,
   listChatsForUser,
   listMessagesForChat,
 } from '../services/chat.service.js';
 import { generateChatReply } from '../services/ai.service.js';
-import { emitChatCreated, emitMessageCreated } from '../services/socket.service.js';
+import { emitChatCreated, emitChatDeleted, emitMessageCreated } from '../services/socket.service.js';
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
@@ -107,5 +108,23 @@ export const sendChatMessageController = async (req, res) => {
   } catch (error) {
     console.error('Message send failed:', error.message);
     handleControllerError(res, error, 502);
+  }
+};
+
+export const deleteChatController = async (req, res) => {
+  if (!handleValidation(req, res)) return;
+
+  try {
+    const io = req.app.get('io');
+    const { hardDeleted, participants } = await deleteChatForUser(
+      req.params.chatId,
+      req.user.id,
+    );
+
+    emitChatDeleted(io, req.params.chatId, req.user.id, hardDeleted, participants);
+
+    res.status(200).json({ deleted: true, hardDeleted });
+  } catch (error) {
+    handleControllerError(res, error);
   }
 };

@@ -29,6 +29,7 @@ const messageSchema = new mongoose.Schema({
   },
   clientMessageId: {
     type: String,
+    default: null,
   },
 }, {
   timestamps: true,
@@ -36,7 +37,7 @@ const messageSchema = new mongoose.Schema({
 
 messageSchema.index(
   { chat: 1, clientMessageId: 1 },
-  { unique: true, sparse: true },
+  { unique: true, partialFilterExpression: { clientMessageId: { $type: 'string' } } },
 );
 messageSchema.index({ chat: 1, createdAt: 1 });
 

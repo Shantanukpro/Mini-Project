@@ -25,6 +25,11 @@ const chatSchema = new mongoose.Schema({
     provider: String,
     createdAt: Date,
   },
+  // Soft-delete: user IDs who have removed this chat from their view
+  deletedFor: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'user',
+  }],
 }, {
   timestamps: true,
 });

@@ -13,6 +13,9 @@ import { generateChatReply } from './ai.service.js';
 const userRoom = (userId) => `user:${userId}`;
 const chatRoom = (chatId) => `chat:${chatId}`;
 
+// Track active socket connections per user { userId: count }
+const userConnections = new Map();
+
 function readToken(socket) {
   const authToken = socket.handshake.auth?.token;
   const header = socket.handshake.headers.authorization;
@@ -77,14 +80,29 @@ async function broadcastAiReply(io, chat, chatId, userContent) {
 
   const prompt = extractAiPrompt(userContent);
   const aiInput = prompt || userContent;
-  const result = await generateChatReply(aiInput);
-  const aiMessage = await createAiMessage({
-    chatId,
-    content: result.reply,
-    provider: result.provider,
-  });
 
-  emitMessageCreated(io, chat, aiMessage);
+  let result;
+  try {
+    result = await generateChatReply(aiInput);
+  } catch (err) {
+    console.error('[broadcastAiReply] AI call failed, sending fallback:', err.message);
+    result = {
+      reply: `AI service error: ${err.message}. Please check your GEMINI_API_KEY.`,
+      provider: 'local-fallback',
+    };
+  }
+
+  try {
+    const aiMessage = await createAiMessage({
+      chatId,
+      content: result.reply,
+      provider: result.provider,
+    });
+
+    emitMessageCreated(io, chat, aiMessage);
+  } catch (err) {
+    console.error('[broadcastAiReply] Failed to save/emit AI message:', err.message);
+  }
 }
 
 export function initSocket(server) {
@@ -98,11 +116,23 @@ export function initSocket(server) {
   io.use(authenticateSocket);
 
   io.on('connection', (socket) => {
-    socket.join(userRoom(socket.user.id));
+    const userId = socket.user.id;
+    socket.join(userRoom(userId));
+
+    // Track presence on connect
+    const currentCount = userConnections.get(userId) || 0;
+    userConnections.set(userId, currentCount + 1);
+    if (currentCount === 0) {
+      io.emit('presence:update', { userId, isOnline: true });
+    }
+
+    socket.on('presence:request_sync', (ack) => {
+      ack?.(Array.from(userConnections.keys()));
+    });
 
     socket.on('chat:join', async ({ chatId }, ack) => {
       try {
-        await getChatForUser(chatId, socket.user.id);
+        await getChatForUser(chatId, userId);
         socket.join(chatRoom(chatId));
         ack?.({ ok: true });
       } catch (error) {
@@ -114,11 +144,19 @@ export function initSocket(server) {
       if (chatId) socket.leave(chatRoom(chatId));
     });
 
+    socket.on('typing:start', ({ chatId }) => {
+      if (chatId) socket.broadcast.to(chatRoom(chatId)).emit('typing:start', { chatId, userId });
+    });
+
+    socket.on('typing:stop', ({ chatId }) => {
+      if (chatId) socket.broadcast.to(chatRoom(chatId)).emit('typing:stop', { chatId, userId });
+    });
+
     socket.on('message:send', async ({ chatId, content, clientMessageId }, ack) => {
       try {
         const { message, duplicate, chat } = await createUserMessage({
           chatId,
-          senderId: socket.user.id,
+          senderId: userId,
           content,
           clientMessageId,
         });
@@ -128,12 +166,30 @@ export function initSocket(server) {
         if (!duplicate) {
           emitMessageCreated(io, chat, message);
 
-          await broadcastAiReply(io, chat, chatId, message.content);
+          // Fire-and-forget: AI reply has its own error handling
+          broadcastAiReply(io, chat, chatId, message.content);
         }
 
         ack?.({ ok: true, message });
       } catch (error) {
         ack?.({ ok: false, error: error.message });
+      }
+    });
+
+    socket.on('disconnect', async () => {
+      const count = userConnections.get(userId) || 1;
+      if (count <= 1) {
+        userConnections.delete(userId);
+        const lastSeen = new Date();
+        io.emit('presence:update', { userId, isOnline: false, lastSeen });
+        
+        try {
+          await userModel.findByIdAndUpdate(userId, { lastSeen }).exec();
+        } catch (err) {
+          console.error('[Socket Disconnect] Failed to update lastSeen:', err.message);
+        }
+      } else {
+        userConnections.set(userId, count - 1);
       }
     });
   });
@@ -146,4 +202,20 @@ export function emitChatCreated(io, chat) {
     const participantId = participant._id?.toString() || participant.toString();
     io.to(userRoom(participantId)).emit('chat:created', chat);
   });
+}
+
+// Notify clients when a chat is deleted
+export function emitChatDeleted(io, chatId, deletedBy, hardDeleted, participants) {
+  // Always tell the deleting user to remove the chat
+  io.to(userRoom(deletedBy)).emit('chat:deleted', { chatId, deletedBy });
+
+  // If hard-deleted, also tell the other participant(s)
+  if (hardDeleted && participants) {
+    participants.forEach((pid) => {
+      const participantId = pid._id?.toString() || pid.toString();
+      if (participantId !== deletedBy) {
+        io.to(userRoom(participantId)).emit('chat:deleted', { chatId, deletedBy });
+      }
+    });
+  }
 }

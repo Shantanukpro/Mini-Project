@@ -24,6 +24,10 @@ const userSchema = new mongoose.Schema({
     required: true,
     select: false,
   },
+  lastSeen: {
+    type: Date,
+    default: Date.now,
+  },
 }, {
   timestamps: true,
   toJSON: {

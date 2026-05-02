@@ -47,6 +47,9 @@ const Home = () => {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
   const [socketStatus, setSocketStatus] = useState("offline");
+  const [presenceMap, setPresenceMap] = useState({});
+  const [typingStatus, setTypingStatus] = useState({});
+  const typingTimeoutRef = useRef(null);
 
   const activeChat = chats.find((chat) => chat._id === activeChatId);
 
@@ -70,6 +73,26 @@ const Home = () => {
 
       return [...currentMessages, incomingMessage];
     });
+  }
+
+  // Remove a chat from local state and clear active view if needed
+  function removeChat(chatId) {
+    setChats((currentChats) => currentChats.filter((c) => c._id !== chatId));
+    setActiveChatId((current) => (current === chatId ? "" : current));
+    setMessages((current) => (activeChatIdRef.current === chatId ? [] : current));
+  }
+
+  function deleteChat(chatId) {
+    if (!window.confirm("Delete this chat? It will be removed from your sidebar.")) return;
+
+    axios
+      .delete(`/chat/${chatId}`)
+      .then(() => {
+        removeChat(chatId);
+      })
+      .catch((err) => {
+        setError(err.response?.data?.error || "Unable to delete chat.");
+      });
   }
 
   function getOtherDeveloper(chat) {
@@ -134,6 +157,35 @@ const Home = () => {
       if (incomingMessage.chat === activeChatIdRef.current) {
         appendMessage(incomingMessage);
       }
+    });
+    socket.on("chat:deleted", ({ chatId }) => {
+      removeChat(chatId);
+    });
+    
+    // Request initial online users
+    socket.emit("presence:request_sync", (onlineUsers) => {
+      setPresenceMap((prev) => {
+        const next = { ...prev };
+        onlineUsers.forEach((id) => {
+          next[id] = { isOnline: true };
+        });
+        return next;
+      });
+    });
+
+    socket.on("presence:update", ({ userId, isOnline, lastSeen }) => {
+      setPresenceMap((prev) => ({
+        ...prev,
+        [userId]: { isOnline, lastSeen },
+      }));
+    });
+
+    socket.on("typing:start", ({ chatId, userId }) => {
+      setTypingStatus((prev) => ({ ...prev, [chatId]: userId }));
+    });
+
+    socket.on("typing:stop", ({ chatId, userId }) => {
+      setTypingStatus((prev) => (prev[chatId] === userId ? { ...prev, [chatId]: null } : prev));
     });
 
     return () => {
@@ -211,6 +263,10 @@ const Home = () => {
     setError("");
     setIsSending(true);
     setMessage("");
+
+    // Clear typing timeout and explicitly stop typing
+    clearTimeout(typingTimeoutRef.current);
+    socketRef.current?.emit("typing:stop", { chatId: activeChatId });
 
     if (socketRef.current?.connected) {
       socketRef.current.emit("message:send", payload, (response) => {
@@ -338,17 +394,37 @@ const Home = () => {
 
                     return (
                       <button
-                        className={`w-full rounded-md border px-3 py-3 text-left transition ${isActive ? "border-blue-500 bg-blue-500/15" : "border-transparent hover:border-slate-700 hover:bg-slate-800"}`}
+                        className={`group relative w-full rounded-md border px-3 py-3 text-left transition ${isActive ? "border-blue-500 bg-blue-500/15" : "border-transparent hover:border-slate-700 hover:bg-slate-800"}`}
                         key={chat._id}
                         onClick={() => setActiveChatId(chat._id)}
                         type="button"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <span className="truncate text-sm font-semibold text-white">
+                          <span className="truncate text-sm font-semibold text-white flex items-center gap-2">
                             {displayDeveloper(otherDeveloper)}
+                            {presenceMap[otherDeveloper?._id]?.isOnline && (
+                              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Online" />
+                            )}
                           </span>
-                          <span className="shrink-0 text-xs text-slate-500">
-                            {formatTime(chat.lastMessage?.createdAt || chat.updatedAt)}
+                          <span className="flex items-center gap-2">
+                            <span className="shrink-0 text-xs text-slate-500">
+                              {formatTime(chat.lastMessage?.createdAt || chat.updatedAt)}
+                            </span>
+                            {/* Trash icon — visible on hover */}
+                            <span
+                              className="hidden shrink-0 cursor-pointer rounded p-1 text-slate-500 transition hover:bg-red-500/20 hover:text-red-400 group-hover:inline-flex"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteChat(chat._id);
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              title="Delete chat"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                                <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.519.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                              </svg>
+                            </span>
                           </span>
                         </div>
                         <p className="mt-1 truncate text-xs text-slate-400">
@@ -364,11 +440,18 @@ const Home = () => {
 
           <section className="flex min-h-[36rem] flex-col rounded-lg border border-slate-800 bg-slate-900">
             <div className="border-b border-slate-800 px-4 py-3">
-              <h2 className="text-lg font-semibold text-white">
+              <div className="flex items-center gap-2 text-lg font-semibold text-white">
                 {activeChat ? displayDeveloper(getOtherDeveloper(activeChat)) : "Select a chat"}
-              </h2>
+                {activeChat && presenceMap[getOtherDeveloper(activeChat)?._id]?.isOnline && (
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" title="Online" />
+                )}
+              </div>
               <p className="mt-1 text-sm text-slate-400">
-                {activeChat ? "Messages persist and sync live for both developers." : "Choose a thread from the sidebar to load history."}
+                {activeChat ? (
+                  presenceMap[getOtherDeveloper(activeChat)?._id]?.isOnline 
+                    ? "Online now" 
+                    : `Last seen: ${formatTime(presenceMap[getOtherDeveloper(activeChat)?._id]?.lastSeen || getOtherDeveloper(activeChat)?.lastSeen) || 'Unknown'}`
+                ) : "Choose a thread from the sidebar to load history."}
               </p>
             </div>
 
@@ -410,6 +493,13 @@ const Home = () => {
                   </article>
                 );
               })}
+
+              {activeChat && typingStatus[activeChatId] === getOtherDeveloper(activeChat)?._id && (
+                <div className="flex animate-pulse items-center gap-2 text-sm italic text-slate-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  {displayDeveloper(getOtherDeveloper(activeChat))} is typing...
+                </div>
+              )}
             </div>
 
             <form onSubmit={sendMessage} className="border-t border-slate-800 p-4">
@@ -417,7 +507,16 @@ const Home = () => {
                 <input
                   className="min-h-11 flex-1 rounded-md border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={!activeChat || isSending}
-                  onChange={(event) => setMessage(event.target.value)}
+                  onChange={(event) => {
+                    setMessage(event.target.value);
+                    if (!activeChatId || !socketRef.current?.connected) return;
+                    
+                    socketRef.current.emit("typing:start", { chatId: activeChatId });
+                    clearTimeout(typingTimeoutRef.current);
+                    typingTimeoutRef.current = setTimeout(() => {
+                      socketRef.current.emit("typing:stop", { chatId: activeChatId });
+                    }, 2000);
+                  }}
                   placeholder={activeChat ? "Message a developer, or type @ai explain this code" : "Open a chat to send a message"}
                   value={message}
                 />
